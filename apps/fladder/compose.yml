@@ -1,0 +1,19 @@
+# fladder — modern Jellyfin web frontend (muxd3.com).
+name: fladder
+services:
+  fladder:
+    image: ghcr.io/donutware/fladder:latest
+    platform: linux/arm64
+    container_name: fladder
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 256m
+    ports:
+      - "8080:80"
+    environment:
+      BASE_URL: "${FLADDER_BASE_URL:-http://muxd2.com:8096}"
+    logging:
+      driver: "k8s-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

@@ -2,8 +2,8 @@
 name: whoami
 description: Tiny HTTP identity echo service - reference template for every new app.
 image: traefik/whoami:v1.10
-host_port: 8080
+host_port: 8081
 container_port: 80
 cpus: "0.5"
 mem_limit: 256m
-health_url: http://localhost:8080/
+health_url: http://localhost:8081/

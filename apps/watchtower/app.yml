@@ -1,0 +1,6 @@
+# Machine-readable app metadata — read by updater.sh, tests and the AI generator.
+name: watchtower
+description: Auto-updates every container image daily (background, no web UI).
+image: containrrr/watchtower:1.7.1
+cpus: "0.25"
+mem_limit: 64m

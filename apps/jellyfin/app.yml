@@ -1,0 +1,10 @@
+# Machine-readable app metadata — read by updater.sh, tests and the AI generator.
+name: jellyfin
+description: Media server (muxd2.com).
+image: jellyfin/jellyfin:10.10.7
+domain: muxd2.com
+host_port: 8096
+container_port: 8096
+cpus: "2.0"
+mem_limit: 1g
+health_url: http://localhost:8096/health

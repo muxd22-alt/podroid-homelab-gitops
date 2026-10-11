@@ -36,6 +36,7 @@ required_files=(
   "bootstrap/updater.sh"
   "bootstrap/homelab"
   "bootstrap/podroid-gitops"
+  "bootstrap/podman-socket"
   "tests/acceptance_test.sh"
   "README.md"
   ".gitignore"
@@ -51,7 +52,7 @@ if [ "${#APP_DIRS[@]}" -eq 0 ]; then
 fi
 
 # --- 2. Shell syntax + shellcheck -------------------------------------------
-all_scripts=(bootstrap/*.sh bootstrap/homelab bootstrap/podroid-gitops apps/*/healthcheck.sh tests/acceptance_test.sh)
+all_scripts=(bootstrap/*.sh bootstrap/homelab bootstrap/podroid-gitops bootstrap/podman-socket apps/*/healthcheck.sh tests/acceptance_test.sh)
 for script in "${all_scripts[@]}"; do
   [ -f "$script" ] || continue
   if head -n 1 "$script" | grep -q '/bin/sh'; then
@@ -126,10 +127,16 @@ PY
   image="$(sed -n 's/^[[:space:]]*image:[[:space:]]*//p' "$compose" | head -n 1 | tr -d "\"'")"
   if [ -n "$image" ]; then pass "$app: image = $image"; else fail "$app: no image in compose.yml"; fi
 
-  # 3d. host port >= 1024, unique, matches app.yml
+  # 3d. host port >= 1024, unique, matches app.yml (optional for background services)
   host_port="$(sed -n 's/^host_port:[[:space:]]*//p' "$meta" | head -n 1 | tr -d "\"'")"
   compose_port="$(sed -n 's/^[[:space:]]*-[[:space:]]*"\{0,1\}\([0-9]\+\):[0-9]\+"\{0,1\}[[:space:]]*$/\1/p' "$compose" | head -n 1)"
-  if [[ "$host_port" =~ ^[0-9]+$ ]]; then
+  if [ -z "$host_port" ]; then
+    if [ -n "$compose_port" ]; then
+      fail "$app: no host_port in app.yml but compose publishes port $compose_port"
+    else
+      pass "$app: background service (no host port)"
+    fi
+  elif [[ "$host_port" =~ ^[0-9]+$ ]]; then
     if [ "$host_port" -ge 1024 ] && [ "$host_port" -le 65535 ]; then
       pass "$app: host_port $host_port >= 1024"
     else
@@ -207,16 +214,18 @@ PY
     if [ "$meta_image" = "$image" ]; then pass "$app: image matches app.yml"; else fail "$app: image ($image) != app.yml ($meta_image)"; fi
   fi
 
-  # 3i. healthcheck
+  # 3i. healthcheck (HTTP apps probe health_url; background apps inspect the container)
   if [ -f "$hc" ] && [ -x "$hc" ]; then
     pass "$app: healthcheck.sh present and executable"
+    health_url="$(sed -n 's/^health_url:[[:space:]]*//p' "$meta" | head -n 1)"
     if grep -q 'health_url' "$hc"; then
       pass "$app: healthcheck reads health_url"
+      if [ -n "$health_url" ]; then pass "$app: health_url = $health_url"; else fail "$app: missing health_url in app.yml"; fi
+    elif grep -q 'podman inspect' "$hc"; then
+      pass "$app: background-service healthcheck (podman inspect)"
     else
-      fail "$app: healthcheck.sh should probe the health_url from app.yml"
+      fail "$app: healthcheck.sh must probe health_url or use 'podman inspect'"
     fi
-    health_url="$(sed -n 's/^health_url:[[:space:]]*//p' "$meta" | head -n 1)"
-    if [ -n "$health_url" ]; then pass "$app: health_url = $health_url"; else fail "$app: missing health_url in app.yml"; fi
   else
     fail "$app: healthcheck.sh missing or not executable"
   fi
@@ -228,6 +237,41 @@ PY
     fail "$app: missing .env.example"
   fi
 done
+
+# --- 3b. Routing table: domains unique + dashboard lists every app -----------
+declare -A DOMAIN_OWNERS
+for dir in "${APP_DIRS[@]}"; do
+  dir="${dir%/}"
+  app="$(basename "$dir")"
+  domain="$(sed -n 's/^domain:[[:space:]]*//p' "$dir/app.yml" 2>/dev/null | head -n 1 | tr -d "\"'")"
+  [ -n "$domain" ] || continue
+  if [[ "$domain" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]]; then
+    pass "$app: domain format ok ($domain)"
+  else
+    fail "$app: invalid domain '$domain'"
+  fi
+  if [ -n "${DOMAIN_OWNERS[$domain]:-}" ]; then
+    fail "$app: domain $domain already used by ${DOMAIN_OWNERS[$domain]}"
+  else
+    DOMAIN_OWNERS[$domain]="$app"
+    pass "$app: domain $domain unique"
+  fi
+done
+
+DASHBOARD_HTML="apps/dashboard/index.html"
+if [ -f "$DASHBOARD_HTML" ]; then
+  for dir in "${APP_DIRS[@]}"; do
+    dir="${dir%/}"
+    app="$(basename "$dir")"
+    if grep -q "id=\"$app\"" "$DASHBOARD_HTML"; then
+      pass "dashboard lists: $app"
+    else
+      fail "dashboard index.html is missing an entry for $app"
+    fi
+  done
+else
+  fail "missing $DASHBOARD_HTML"
+fi
 
 # --- 4. No secrets committed --------------------------------------------------
 if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then

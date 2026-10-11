@@ -28,6 +28,37 @@ The installer is idempotent — re-run it any time. It:
 5. adds a cron entry: `0 */12 * * *` → `bootstrap/updater.sh`
 6. deploys every app and runs its healthcheck (5 retries)
 
+## Services & routing
+
+Everything is reachable locally. The installer maps the `muxd*.com` domains to
+`127.0.0.1` in the VM's `/etc/hosts`, and the **dashboard** page adapts its
+links to whatever host you open it from (VM or phone browser).
+
+| Domain | Service | Function | Port | Open |
+| --- | --- | --- | --- | --- |
+| `muxd.local` | **Dashboard** | Service portal — links, ports, setup notes | `:8888` | [http://muxd.local:8888](http://muxd.local:8888) |
+| `muxd1.com` | **Gogs** | Lightweight git hosting | `:3000` | [http://muxd1.com:3000](http://muxd1.com:3000) |
+| `muxd2.com` | **Jellyfin** | Media server | `:8096` | [http://muxd2.com:8096](http://muxd2.com:8096) |
+| `muxd3.com` | **Fladder** | Jellyfin web frontend | `:8080` | [http://muxd3.com:8080](http://muxd3.com:8080) |
+| `muxd4.com` | **RSSHub** | RSS generator | `:1200` | [http://muxd4.com:1200](http://muxd4.com:1200) |
+| `muxd5.com` | **SiYuan** | Personal knowledge base | `:6806` | [http://muxd5.com:6806](http://muxd5.com:6806) |
+| — | **Watchtower** | Auto-updates all containers daily | — | logs: `homelab logs watchtower` |
+| — | **whoami** | Demo / connectivity test | `:8081` | [http://localhost:8081](http://localhost:8081) |
+
+### Passwords & first-run setup
+
+| Service | Credentials |
+| --- | --- |
+| Gogs | First visit → install page (SQLite3) → create admin username/password |
+| Jellyfin | First visit → setup wizard → create admin account & password |
+| Fladder | Logs in with your **Jellyfin** account (URL preset via `FLADDER_BASE_URL`) |
+| RSSHub | Open access, no login |
+| SiYuan | Access code in `apps/siyuan/.env` (`SIYUAN_ACCESS_CODE`), then account in UI |
+| Dashboard / whoami | No login |
+
+Secrets never live in git — only in the gitignored `.env` files that the
+installer seeds from each `.env.example`.
+
 ## How it works
 
 ```
@@ -95,21 +126,29 @@ Rules enforced by CI and the updater:
 .github/ISSUE_TEMPLATE/new-app.yml     issue form for the AI generator
 .github/workflows/ai-app-generator.yml issue → PR pipeline (free OpenRouter models)
 .github/workflows/validate.yml         shellcheck + acceptance tests + smoke test
+apps/dashboard/                        service portal (links, ports, setup notes)
+apps/fladder/                          Jellyfin web frontend (muxd3.com)
+apps/gogs/                             git hosting (muxd1.com)
+apps/jellyfin/                         media server (muxd2.com)
+apps/rsshub/                           RSS generator (muxd4.com)
+apps/siyuan/                           knowledge base (muxd5.com)
+apps/watchtower/                       daily image auto-updater (background)
 apps/whoami/                           demo app / reference template
 bootstrap/install.sh                   one-line installer
 bootstrap/updater.sh                   12h sync + healthcheck + rollback
 bootstrap/podroid-gitops               OpenRC service (reconcile at boot)
+bootstrap/podman-socket                OpenRC service (podman API for watchtower)
 bootstrap/homelab                      operator CLI
 tests/acceptance_test.sh               the acceptance suite (also runs in CI)
 ```
 
 ## The demo app: whoami
 
-`traefik/whoami:v1.10` (arm64) on host port **8080** — it echoes request
+`traefik/whoami:v1.10` (arm64) on host port **8081** — it echoes request
 headers and the container's identity:
 
 ```sh
-curl http://localhost:8080/
+curl http://localhost:8081/
 ```
 
 Change the reported name in `apps/whoami/.env` (`WHOAMI_NAME=...`).

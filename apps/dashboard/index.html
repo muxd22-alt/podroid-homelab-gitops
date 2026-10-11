@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Podroid Homelab — Dashboard</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 1.5rem;
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #0d1117; color: #e6edf3;
+  }
+  h1 { margin: 0 0 .25rem; font-size: 1.5rem; }
+  .sub { color: #8b949e; margin-bottom: 1.5rem; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; }
+  th, td { text-align: left; padding: .6rem .7rem; border-bottom: 1px solid #21262d; vertical-align: top; }
+  th { color: #8b949e; font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+  tr:hover td { background: #161b22; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .open { font-weight: 600; white-space: nowrap; }
+  .domain { font-family: ui-monospace, monospace; color: #7ee787; white-space: nowrap; }
+  .port { font-family: ui-monospace, monospace; color: #ffa657; white-space: nowrap; }
+  .muted { color: #8b949e; }
+  code { background: #161b22; border: 1px solid #21262d; border-radius: 4px; padding: .05rem .3rem; font-size: .85em; }
+  .notes h2 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; }
+  .notes li { margin-bottom: .4rem; }
+  footer { margin-top: 2rem; color: #8b949e; font-size: .85rem; }
+</style>
+</head>
+<body>
+  <h1>Podroid Homelab</h1>
+  <p class="sub">Every service, one page. Links auto-use whatever host you opened this page with.</p>
+
+  <table>
+    <thead>
+      <tr><th>Service</th><th>Open</th><th>Domain</th><th>Port</th><th>Login / setup</th></tr>
+    </thead>
+    <tbody>
+      <tr id="dashboard">
+        <td><strong>Dashboard</strong><br><span class="muted">this page — service portal</span></td>
+        <td class="open"><a data-port="8888" href="http://localhost:8888/">dashboard</a></td>
+        <td class="domain">muxd.local</td>
+        <td class="port">:8888</td>
+        <td>No login. Static page served by nginx.</td>
+      </tr>
+      <tr id="gogs">
+        <td><strong>Gogs</strong><br><span class="muted">lightweight git hosting</span></td>
+        <td class="open"><a data-port="3000" href="http://localhost:3000/">gogs</a></td>
+        <td class="domain">muxd1.com</td>
+        <td class="port">:3000</td>
+        <td>First visit opens the install page — pick <code>SQLite3</code>, then create your admin username &amp; password (that account becomes the login).</td>
+      </tr>
+      <tr id="jellyfin">
+        <td><strong>Jellyfin</strong><br><span class="muted">media server</span></td>
+        <td class="open"><a data-port="8096" href="http://localhost:8096/">jellyfin</a></td>
+        <td class="domain">muxd2.com</td>
+        <td class="port">:8096</td>
+        <td>First visit runs the setup wizard — create the admin account &amp; password, then add your media libraries. Config lives in <code>apps/jellyfin/data/</code>.</td>
+      </tr>
+      <tr id="fladder">
+        <td><strong>Fladder</strong><br><span class="muted">Jellyfin web frontend</span></td>
+        <td class="open"><a data-port="8080" href="http://localhost:8080/">fladder</a></td>
+        <td class="domain">muxd3.com</td>
+        <td class="port">:8080</td>
+        <td>Logs in with your <strong>Jellyfin account</strong> — no separate password. Server URL preset via <code>FLADDER_BASE_URL</code> in <code>apps/fladder/.env</code>.</td>
+      </tr>
+      <tr id="rsshub">
+        <td><strong>RSSHub</strong><br><span class="muted">RSS generator</span></td>
+        <td class="open"><a data-port="1200" href="http://localhost:1200/">rsshub</a></td>
+        <td class="domain">muxd4.com</td>
+        <td class="port">:1200</td>
+        <td>Open access — no login. Docs at <a data-port="1200" href="http://localhost:1200/about">/about</a>. Pair with any RSS reader.</td>
+      </tr>
+      <tr id="siyuan">
+        <td><strong>SiYuan</strong><br><span class="muted">personal knowledge base</span></td>
+        <td class="open"><a data-port="6806" href="http://localhost:6806/">siyuan</a></td>
+        <td class="domain">muxd5.com</td>
+        <td class="port">:6806</td>
+        <td>First visit asks for the <strong>access code</strong> — set <code>SIYUAN_ACCESS_CODE</code> in <code>apps/siyuan/.env</code>, run <code>homelab sync</code>, then create your account in the UI.</td>
+      </tr>
+      <tr id="watchtower">
+        <td><strong>Watchtower</strong><br><span class="muted">background auto-updater</span></td>
+        <td class="open"><span class="muted">no web UI</span></td>
+        <td class="domain muted">—</td>
+        <td class="port muted">—</td>
+        <td>Refreshes every image daily (<code>--interval 86400</code>). Logs: <code>homelab logs watchtower</code>.</td>
+      </tr>
+      <tr id="whoami">
+        <td><strong>whoami</strong><br><span class="muted">demo / connectivity test</span></td>
+        <td class="open"><a data-port="8081" href="http://localhost:8081/">whoami</a></td>
+        <td class="domain muted">—</td>
+        <td class="port">:8081</td>
+        <td>No login — echoes your request headers (useful to verify port forwarding).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="notes">
+    <h2>Passwords &amp; secrets</h2>
+    <ul>
+      <li>Nothing secret is stored in this repo or on this page.</li>
+      <li>Gogs &amp; Jellyfin: passwords are created in their first-run wizards.</li>
+      <li>Fladder: uses your Jellyfin login.</li>
+      <li>SiYuan: access code lives only in <code>apps/siyuan/.env</code> (gitignored).</li>
+      <li>Per-app settings: copy each <code>apps/&lt;name&gt;/.env.example</code> → <code>.env</code> (the installer already did this).</li>
+    </ul>
+
+    <h2>Domains</h2>
+    <ul>
+      <li><code>muxd1.com</code>…<code>muxd5.com</code> and <code>muxd.local</code> are mapped to <code>127.0.0.1</code> in the VM's <code>/etc/hosts</code> by the installer.</li>
+      <li>Opening the dashboard from your phone? Links already adapt to the host you used.</li>
+      <li>Ports are registered with <code>podroid-forward</code> automatically when available.</li>
+    </ul>
+
+    <h2>Operations</h2>
+    <ul>
+      <li><code>homelab sync</code> — pull &amp; deploy now &nbsp;·&nbsp; <code>homelab status</code> — overview &nbsp;·&nbsp; <code>homelab logs &lt;app&gt;</code> — container logs</li>
+      <li>Every 12h the updater syncs <code>main</code>, redeploys changed apps, healthchecks, and rolls back on failure.</li>
+      <li>New services: open a GitHub issue with the <strong>New app request</strong> template — CI opens a PR.</li>
+    </ul>
+  </div>
+
+  <footer>podroid-homelab-gitops · served by nginx from <code>apps/dashboard/index.html</code></footer>
+
+<script>
+  // Rebuild every link against the host this page was opened from,
+  // so the dashboard works from the VM (muxd.local) or the phone browser.
+  (function () {
+    var host = location.hostname || "localhost";
+    document.querySelectorAll("a[data-port]").forEach(function (a) {
+      a.href = "http://" + host + ":" + a.getAttribute("data-port") + (a.getAttribute("href") || "/").replace(/^https?:\/\/[^\/:]+(:\d+)?/, "");
+    });
+  })();
+</script>
+</body>
+</html>

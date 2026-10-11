@@ -1,0 +1,10 @@
+# Machine-readable app metadata — read by updater.sh, tests and the AI generator.
+name: rsshub
+description: RSS generator (muxd4.com).
+image: diygod/rsshub:latest
+domain: muxd4.com
+host_port: 1200
+container_port: 1200
+cpus: "0.5"
+mem_limit: 512m
+health_url: http://localhost:1200/

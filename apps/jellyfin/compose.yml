@@ -1,0 +1,22 @@
+# jellyfin — media server (muxd2.com).
+name: jellyfin
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.10.7
+    platform: linux/arm64
+    container_name: jellyfin
+    restart: unless-stopped
+    cpus: 2.0
+    mem_limit: 1g
+    ports:
+      - "8096:8096"
+    environment:
+      TZ: "${TZ:-UTC}"
+    volumes:
+      - ./data/config:/config
+      - ./data/cache:/cache
+    logging:
+      driver: "k8s-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

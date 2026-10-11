@@ -1,0 +1,19 @@
+# rsshub — RSS generator (muxd4.com).
+name: rsshub
+services:
+  rsshub:
+    image: diygod/rsshub:latest
+    platform: linux/arm64
+    container_name: rsshub
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
+    ports:
+      - "1200:1200"
+    environment:
+      NODE_ENV: production
+    logging:
+      driver: "k8s-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

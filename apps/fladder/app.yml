@@ -1,0 +1,10 @@
+# Machine-readable app metadata — read by updater.sh, tests and the AI generator.
+name: fladder
+description: Jellyfin web frontend (muxd3.com).
+image: ghcr.io/donutware/fladder:latest
+domain: muxd3.com
+host_port: 8080
+container_port: 80
+cpus: "0.5"
+mem_limit: 256m
+health_url: http://localhost:8080/

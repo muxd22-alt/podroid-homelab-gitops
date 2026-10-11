@@ -1,0 +1,23 @@
+# siyuan — personal knowledge base (muxd5.com).
+name: siyuan
+services:
+  siyuan:
+    image: b3log/siyuan:latest
+    platform: linux/arm64
+    container_name: siyuan
+    restart: unless-stopped
+    cpus: 1.0
+    mem_limit: 512m
+    ports:
+      - "6806:6806"
+    command:
+      - --workspace=/siyuan/workspace
+    environment:
+      SIYUAN_ACCESS_CODE: "${SIYUAN_ACCESS_CODE:-}"
+    volumes:
+      - ./data:/siyuan/workspace
+    logging:
+      driver: "k8s-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

@@ -1,0 +1,18 @@
+# watchtower — daily auto-updater for every container (background, no UI).
+name: watchtower
+services:
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    platform: linux/arm64
+    container_name: watchtower
+    restart: unless-stopped
+    cpus: 0.25
+    mem_limit: 64m
+    volumes:
+      - /run/podman/podman.sock:/var/run/docker.sock
+    command: --interval 86400 --cleanup
+    logging:
+      driver: "k8s-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

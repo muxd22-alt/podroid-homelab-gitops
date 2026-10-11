@@ -1,0 +1,10 @@
+# Machine-readable app metadata — read by updater.sh, tests and the AI generator.
+name: gogs
+description: Lightweight self-hosted git hosting (muxd1.com).
+image: gogs/gogs:0.13
+domain: muxd1.com
+host_port: 3000
+container_port: 3000
+cpus: "0.5"
+mem_limit: 256m
+health_url: http://localhost:3000/

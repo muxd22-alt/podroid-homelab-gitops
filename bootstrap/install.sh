@@ -69,6 +69,28 @@ mkdir -p "$LOG_DIR"
 chmod 0755 "$LOG_DIR"
 log "RAM-disk log directory ready: $LOG_DIR"
 
+# --- 5b. Local domains -> 127.0.0.1 (routing table: muxdN.com -> service) ----
+log "Registering local domains in /etc/hosts ..."
+for domain in muxd1.com muxd2.com muxd3.com muxd4.com muxd5.com muxd.local; do
+  if grep -qE "^[^#]*[[:space:]]$domain([[:space:]]|$)" /etc/hosts 2>/dev/null; then
+    continue
+  fi
+  printf '127.0.0.1 %s\n' "$domain" >> /etc/hosts
+  log "  added: 127.0.0.1 $domain"
+done
+
+# --- 5c. Podman API socket (watchtower needs it to auto-update images) ------
+if [ -f "$INSTALL_DIR/bootstrap/podman-socket" ]; then
+  log "Installing OpenRC service 'podman-socket' ..."
+  sed "s|^SOCKET_PATH=.*|SOCKET_PATH=\"/run/podman/podman.sock\"|" "$INSTALL_DIR/bootstrap/podman-socket" \
+    > /etc/init.d/podman-socket
+  chmod 0755 /etc/init.d/podman-socket
+  rc-update add podman-socket default 2>/dev/null || log "WARN: could not enable podman-socket"
+  if ! rc-service podman-socket status >/dev/null 2>&1; then
+    rc-service podman-socket start >/dev/null 2>&1 || log "WARN: could not start podman-socket"
+  fi
+fi
+
 # --- 6. OpenRC service (one-shot sync at boot) ------------------------------
 log "Installing OpenRC service 'podroid-gitops'..."
 sed "s|^HOMELAB_DIR=.*|HOMELAB_DIR=\"$INSTALL_DIR\"|" "$INSTALL_DIR/bootstrap/podroid-gitops" \

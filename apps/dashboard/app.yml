@@ -1,0 +1,10 @@
+# Machine-readable app metadata — read by updater.sh, tests and the AI generator.
+name: dashboard
+description: Local service portal — every app, link, port and setup note in one page.
+image: nginx:alpine
+domain: muxd.local
+host_port: 8888
+container_port: 80
+cpus: "0.25"
+mem_limit: 64m
+health_url: http://localhost:8888/

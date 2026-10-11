@@ -1,0 +1,36 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh
+# ---------------------------------------------------------------------------
+# podman-socket — exposes the podman API on a unix socket.
+# watchtower (and future tools) use it to manage container updates.
+# ---------------------------------------------------------------------------
+SOCKET_PATH="/run/podman/podman.sock"
+
+# OpenRC reads these variables directly.
+# shellcheck disable=SC2034
+name="podman-socket"
+# shellcheck disable=SC2034
+description="Podman API socket for watchtower and tooling"
+
+# shellcheck disable=SC2034
+command="podman"
+# shellcheck disable=SC2034
+command_args="system service --time=0 unix://$SOCKET_PATH"
+# shellcheck disable=SC2034
+command_background="yes"
+# shellcheck disable=SC2034
+pidfile="/run/podman-socket.pid"
+
+# shellcheck disable=SC2034
+output_log="/tmp/homelab-logs/podman-socket.log"
+# shellcheck disable=SC2034
+error_log="/tmp/homelab-logs/podman-socket.log"
+
+depend() {
+    after firewall
+}
+
+start_pre() {
+    checkpath -d -m 0755 "$(dirname "$SOCKET_PATH")" 2>/dev/null || true
+    checkpath -d -m 0755 /tmp/homelab-logs 2>/dev/null || true
+}

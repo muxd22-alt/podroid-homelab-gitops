@@ -1,0 +1,10 @@
+# Machine-readable app metadata — read by updater.sh, tests and the AI generator.
+name: siyuan
+description: Personal knowledge base (muxd5.com).
+image: b3log/siyuan:latest
+domain: muxd5.com
+host_port: 6806
+container_port: 6806
+cpus: "1.0"
+mem_limit: 512m
+health_url: http://localhost:6806/
