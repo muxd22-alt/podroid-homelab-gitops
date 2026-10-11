@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# homelab — tiny operator CLI for the Podroid GitOps homelab.
+#
+#   homelab sync           one manual git sync + deploy + healthcheck
+#   homelab status         show git state, services and recent log lines
+#   homelab apps           list deployed apps with ports and images
+#   homelab logs [name]    tail the updater log (or an app's container log)
+#   homelab version        print install/commit information
+# ---------------------------------------------------------------------------
+set -euo pipefail
+
+REPO_DIR="${REPO_DIR:-${HOME:-/root}/homelab}"
+LOG_DIR="${LOG_DIR:-/tmp/homelab-logs}"
+LOG_FILE="$LOG_DIR/updater.log"
+
+usage() {
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  sync)
+    exec "$REPO_DIR/bootstrap/updater.sh"
+    ;;
+  status)
+    echo "== git =="
+    git -C "$REPO_DIR" log --oneline -3 2>/dev/null || echo "not a git repo"
+    echo
+    echo "== services =="
+    for svc in podroid-gitops crond; do
+      if command -v rc-service >/dev/null 2>&1; then
+        if rc-service "$svc" status >/dev/null 2>&1; then
+          echo "  $svc: running"
+        else
+          echo "  $svc: stopped"
+        fi
+      else
+        echo "  $svc: (no OpenRC)"
+      fi
+    done
+    echo
+    echo "== containers =="
+    podman ps --format '  {{.Names}}  {{.Status}}  {{.Ports}}' 2>/dev/null || echo "  (podman unavailable)"
+    echo
+    echo "== last updater run =="
+    tail -n 5 "$LOG_FILE" 2>/dev/null || echo "  (no log yet)"
+    ;;
+  apps)
+    for dir in "$REPO_DIR"/apps/*/; do
+      [ -d "$dir" ] || continue
+      name="$(basename "$dir")"
+      image="$(sed -n 's/^[[:space:]]*image:[[:space:]]*//p' "$dir/compose.yml" 2>/dev/null | head -n 1 | tr -d "\"'")"
+      port="$(sed -n 's/^host_port:[[:space:]]*//p' "$dir/app.yml" 2>/dev/null | head -n 1)"
+      printf '  %-20s %-40s port %s\n' "$name" "${image:--}" "${port:--}"
+    done
+    ;;
+  logs)
+    if [ -n "${2:-}" ]; then
+      podman logs -f --tail 100 "$2"
+    else
+      [ -f "$LOG_FILE" ] || { echo "no updater log yet at $LOG_FILE"; exit 0; }
+      tail -n 50 -f "$LOG_FILE"
+    fi
+    ;;
+  version)
+    echo "podroid-homelab-gitops"
+    git -C "$REPO_DIR" log -1 --format='commit: %h (%ad) %s' --date=short 2>/dev/null || echo "commit: unknown"
+    echo "updater log: $LOG_FILE"
+    ;;
+  -h|--help|help)
+    usage 0
+    ;;
+  *)
+    echo "unknown command: ${cmd:-<none>}" >&2
+    usage 2
+    ;;
+esac

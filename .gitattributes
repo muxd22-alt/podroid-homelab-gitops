@@ -1,0 +1,2 @@
+# Normalize every text file to LF — the scripts run on Alpine inside the VM.
+* text=auto eol=lf

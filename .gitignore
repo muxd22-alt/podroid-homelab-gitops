@@ -1,0 +1,16 @@
+# Secrets — real environment files are never committed
+.env
+apps/*/.env
+
+# Runtime state written by containers (bind mounts)
+apps/*/data/
+apps/*/storage/
+
+# Logs live on the RAM disk (/tmp) on-device; never commit them
+*.log
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

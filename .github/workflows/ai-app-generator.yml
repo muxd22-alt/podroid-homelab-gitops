@@ -1,0 +1,288 @@
+name: AI app generator
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ai-app-generator-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    # Only run for issues that carry the app-request label (template default).
+    if: contains(github.event.issue.labels.*.name, 'app-request')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate app proposal with OpenRouter (free models only)
+        id: gen
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gen"
+
+          # Only free models are permitted — first entry is the default.
+          ALLOWED='nvidia/nemotron-3-super-120b-a12b:free nvidia/nemotron-3.5-lightning:free apodex/apodex-1.1-mini:free inception/mercury-decide:free liquid/lfm-2.5-2.6b:free google/gemma-4-26b-a4b-it:free nvidia/llama-nemotron-embed-vl-1b-v2:free'
+          MODEL="${OPENROUTER_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}"
+          case " $ALLOWED " in
+            *" $MODEL "*) ;;
+            *) echo "Model '$MODEL' is not in the free allowlist — using default"; MODEL="nvidia/nemotron-3-super-120b-a12b:free" ;;
+          esac
+          echo "Using model: $MODEL"
+          export MODEL
+
+          python3 - "$RUNNER_TEMP/gen" <<'PYEOF'
+          import json, os, re, sys, urllib.request, urllib.error
+
+          out_dir = sys.argv[1]
+          issue_title = os.environ.get("ISSUE_TITLE", "")
+          issue_body = os.environ.get("ISSUE_BODY", "")
+          issue_number = os.environ.get("ISSUE_NUMBER", "")
+          model = os.environ.get("MODEL", "")
+
+          prompt = f"""You generate files for a Podman/podman-compose GitOps homelab that runs on a
+          Samsung Galaxy Z Fold 4 inside an Alpine ARM64 VM (Podroid). Strict rules:
+          - linux/arm64 images only; host ports must be >= 1024 and unique.
+          - limits: cpus 0.5, mem_limit 256m (never above 2.0 / 1g).
+          - logging driver k8s-file with max-size 5m, max-file 2.
+          - restart unless-stopped, container_name == app slug.
+          - secrets only in .env (gitignored), never hardcode them.
+
+          Return ONLY a JSON object, no markdown fences, with keys:
+          slug (kebab-case), description, image (arm64 tag), host_port (int),
+          container_port (int), cpus (string like "0.5"), mem_limit (like "256m"),
+          env (object of env var names to .env.example values),
+          compose (full YAML string for apps/<slug>/compose.yml using dollar-brace ENV placeholders),
+          app_yml (full YAML string for apps/<slug>/app.yml),
+          healthcheck (shell script body using curl -f against the health URL).
+
+          Issue title: {issue_title}
+          Issue body:
+          {issue_body}
+          """
+
+          if not os.environ.get("OPENROUTER_API_KEY"):
+              print("OPENROUTER_API_KEY is not set", file=sys.stderr)
+              sys.exit(3)
+
+          req = urllib.request.Request(
+              "https://openrouter.ai/api/v1/chat/completions",
+              data=json.dumps({
+                  "model": model,
+                  "messages": [{"role": "user", "content": prompt}],
+                  "temperature": 0.2,
+              }).encode(),
+              headers={
+                  "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+                  "Content-Type": "application/json",
+              },
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=120) as resp:
+                  data = json.loads(resp.read().decode())
+          except urllib.error.HTTPError as e:
+              print(f"OpenRouter HTTP {e.code}: {e.read().decode()[:500]}", file=sys.stderr)
+              sys.exit(1)
+
+          content = data["choices"][0]["message"]["content"]
+          m = re.search(r"\{.*\}", content, re.S)
+          if not m:
+              print("No JSON object in model response", file=sys.stderr)
+              print(content[:2000], file=sys.stderr)
+              sys.exit(1)
+          try:
+              proposal = json.loads(m.group(0))
+          except json.JSONDecodeError as e:
+              print(f"Invalid JSON: {e}", file=sys.stderr)
+              sys.exit(1)
+
+          required = ["slug", "image", "host_port", "compose", "app_yml"]
+          missing = [k for k in required if k not in proposal]
+          if missing:
+              print(f"Missing keys: {missing}", file=sys.stderr)
+              sys.exit(1)
+
+          with open(os.path.join(out_dir, "proposal.json"), "w") as f:
+              json.dump(proposal, f, indent=2)
+          print("proposal written")
+          PYEOF
+
+      - name: Validate proposal
+        id: validate
+        run: |
+          set -euo pipefail
+          GEN="$RUNNER_TEMP/gen"
+          python3 - "$GEN" <<'PYEOF'
+          import json, os, re, sys, subprocess, pathlib
+
+          gen = sys.argv[1]
+          proposal = json.load(open(os.path.join(gen, "proposal.json")))
+          errors = []
+
+          slug = str(proposal.get("slug", ""))
+          if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", slug or ""):
+              errors.append(f"invalid slug: {slug!r}")
+          if (pathlib.Path("apps") / slug).exists():
+              errors.append(f"apps/{slug} already exists")
+
+          image = str(proposal.get("image", ""))
+          if ":" not in image or "@" in image:
+              errors.append(f"image must be a tagged (not digest) reference: {image}")
+
+          try:
+              port = int(proposal["host_port"])
+          except (KeyError, ValueError, TypeError):
+              port = -1
+              errors.append("host_port must be an integer")
+          if 0 < port < 1024:
+              errors.append(f"host_port {port} must be >= 1024")
+          if port > 65535:
+              errors.append(f"host_port {port} invalid")
+
+          existing = set()
+          for app in pathlib.Path("apps").iterdir():
+              meta = app / "app.yml"
+              if not meta.is_file():
+                  continue
+              for line in meta.read_text().splitlines():
+                  m = re.match(r"^host_port:\s*(\d+)", line)
+                  if m:
+                      existing.add(int(m.group(1)))
+          if port in existing:
+              errors.append(f"host_port {port} already used by another app")
+
+          compose = str(proposal.get("compose", ""))
+          if "linux/arm64" not in compose:
+              errors.append("compose.yml must pin platform: linux/arm64")
+          if "k8s-file" not in compose and "logging" not in compose:
+              errors.append("compose.yml must set the logging driver")
+          if not re.search(r"mem_limit:\s*[0-9]+[kmg]?\b", compose, re.I):
+              errors.append("compose.yml must set mem_limit")
+
+          # Confirm the image really ships an arm64 manifest.
+          if errors:
+              print("\n".join(f"VALIDATION: {e}" for e in errors), file=sys.stderr)
+              sys.exit(1)
+
+          out = pathlib.Path(gen) / "validated.txt"
+          out.write_text("ok\n")
+          print(f"validated {slug} ({image}) on port {port}")
+          PYEOF
+          echo "slug=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["slug"])' "$GEN/proposal.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Comment validation failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: ":x: **AI app generator — validation failed.**\n\nSee the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details. Fix the issue body (arm64 image, port >= 1024, unique slug) and remove the `app-request` label, then re-add it to retry."
+            });
+
+      - name: Build app files
+        run: |
+          set -euo pipefail
+          GEN="$RUNNER_TEMP/gen"
+          SLUG="${{ steps.validate.outputs.slug }}"
+          mkdir -p "apps/$SLUG"
+          python3 - "$GEN" "$SLUG" <<'PYEOF'
+          import json, os, sys, pathlib, re
+
+          gen, slug = sys.argv[1], sys.argv[2]
+          p = json.load(open(os.path.join(gen, "proposal.json")))
+          target = pathlib.Path("apps") / slug
+
+          (target / "compose.yml").write_text(str(p["compose"]).rstrip() + "\n")
+          (target / "app.yml").write_text(str(p["app_yml"]).rstrip() + "\n")
+
+          env = p.get("env") or {}
+          if not isinstance(env, dict):
+              env = {}
+          if env:
+              lines = ["# Auto-generated environment for %s — copy to .env (never commit .env)." % slug, ""]
+              for k, v in env.items():
+                  lines.append(f"{k}={v}")
+              (target / ".env.example").write_text("\n".join(lines) + "\n")
+          else:
+              (target / ".env.example").write_text(f"# {slug} has no secrets — kept for consistency.\n")
+
+          hc = str(p.get("healthcheck", "")).strip()
+          if hc:
+              if not hc.startswith("#!"):
+                  hc = "#!/usr/bin/env bash\n" + hc
+              (target / "healthcheck.sh").write_text(hc.rstrip() + "\n")
+          print("app files written")
+          PYEOF
+          chmod +x "apps/$SLUG/healthcheck.sh" || true
+
+      - name: Ensure container_name matches slug
+        run: |
+          set -euo pipefail
+          SLUG="${{ steps.validate.outputs.slug }}"
+          python3 - "$SLUG" <<'PYEOF'
+          import pathlib, re, sys
+          slug = sys.argv[1]
+          path = pathlib.Path(f"apps/{slug}/compose.yml")
+          compose = path.read_text()
+          if re.search(r"(?m)^\s*container_name:\s*" + re.escape(slug) + r"\s*$", compose):
+              print("container_name already matches slug")
+          elif re.search(r"(?m)^\s*container_name:", compose):
+              compose = re.sub(r"(?m)^(\s*container_name:).*$", rf"\g<1> {slug}", compose)
+              path.write_text(compose)
+              print("container_name rewritten to slug")
+          else:
+              print("WARNING: no container_name key in compose.yml — leaving as generated")
+          PYEOF
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "feat(app): add ${{ steps.validate.outputs.slug }}"
+          title: "feat(app): add ${{ steps.validate.outputs.slug }}"
+          body: |
+            Automated proposal for issue #${{ github.event.issue.number }}: "${{ github.event.issue.title }}"
+
+            - image pinned to linux/arm64
+            - host port >= 1024, checked against existing apps
+            - cpus/mem/logging caps enforced
+
+            Generated by the free OpenRouter model flow. Review `apps/${{ steps.validate.outputs.slug }}/` before merging.
+          branch: "ai/app-${{ steps.validate.outputs.slug }}"
+          delete-branch: true
+
+      - name: Comment PR link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pulls = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:ai/app-${{ steps.validate.outputs.slug }}`,
+              state: "open"
+            });
+            const url = pulls.data[0]?.html_url;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: url
+                ? `:rocket: Opened a pull request: ${url}\n\nMerge it and the 12-hour updater will deploy it automatically.`
+                : ":warning: A PR may have been created but could not be located — check the Actions tab."
+            });

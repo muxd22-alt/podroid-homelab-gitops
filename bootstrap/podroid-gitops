@@ -1,0 +1,36 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh
+# ---------------------------------------------------------------------------
+# podroid-gitops — OpenRC one-shot service: reconcile the homelab at boot.
+# bootstrap/install.sh rewrites HOMELAB_DIR= to the real install path.
+# ---------------------------------------------------------------------------
+HOMELAB_DIR="/root/homelab"
+
+# OpenRC reads these variables directly.
+# shellcheck disable=SC2034
+name="podroid-gitops"
+# shellcheck disable=SC2034
+description="Podroid GitOps homelab boot reconcile"
+
+start() {
+    ebegin "Reconciling Podroid homelab (git pull + deploy + healthcheck)"
+    if [ -x "$HOMELAB_DIR/bootstrap/updater.sh" ]; then
+        "$HOMELAB_DIR/bootstrap/updater.sh" --boot
+        eend $? "boot reconcile reported failures (see /tmp/homelab-logs/updater.log)"
+    else
+        eend 1 "updater.sh not found at $HOMELAB_DIR/bootstrap/updater.sh"
+    fi
+}
+
+stop() {
+    return 0
+}
+
+depend() {
+    need net
+    after firewall
+}
+
+start_pre() {
+    checkpath -d -m 0755 /tmp/homelab-logs 2>/dev/null || true
+}

@@ -1,0 +1,20 @@
+# whoami — demo service and reference template for every new app.
+# Podroid rules: linux/arm64 only, host ports >= 1024, CPU/RAM caps, flash-safe logs.
+name: whoami
+services:
+  whoami:
+    image: traefik/whoami:v1.10
+    platform: linux/arm64
+    container_name: whoami
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 256m
+    ports:
+      - "8080:80"
+    environment:
+      NAME: "${WHOAMI_NAME:-podroid}"
+    logging:
+      driver: "k8s-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

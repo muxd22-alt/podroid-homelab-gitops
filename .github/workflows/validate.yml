@@ -1,0 +1,67 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    env:
+      SHELLCHECK_REQUIRED: "1"
+      REQUIRE_ARM64_MANIFEST: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y shellcheck podman skopeo python3-yaml curl
+          # Ubuntu 24.04 marks the system python externally managed; try each in order.
+          python3 -m pip install --user podman-compose \
+            || python3 -m pip install --user --break-system-packages podman-compose \
+            || pipx install podman-compose
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          podman-compose --version || true
+
+      - name: Shellcheck all scripts
+        run: |
+          set -euo pipefail
+          shellcheck -x bootstrap/install.sh bootstrap/updater.sh bootstrap/homelab \
+            bootstrap/podroid-gitops apps/*/healthcheck.sh tests/acceptance_test.sh
+
+      - name: Acceptance tests
+        run: bash tests/acceptance_test.sh
+
+      - name: Podman compose smoke test (whoami)
+        run: |
+          set -euo pipefail
+          # CI runners are amd64: drop the arm64 pin only for this local smoke run.
+          cp apps/whoami/compose.yml /tmp/whoami-compose.yml
+          sed '/platform:/d' /tmp/whoami-compose.yml > apps/whoami/compose.ci.yml
+          cd apps/whoami
+          podman-compose -f compose.ci.yml config >/dev/null
+          podman-compose -f compose.ci.yml up -d
+          sleep 3
+          ./healthcheck.sh
+          podman-compose -f compose.ci.yml down -v
+          rm -f compose.ci.yml
+        env:
+          WHOAMI_NAME: ci
+
+      - name: Log driver option check
+        run: |
+          set -euo pipefail
+          # Verify podman accepts the k8s-file log opts we pin in every compose file.
+          podman run --rm --log-driver=k8s-file --log-opt max-size=5m --log-opt max-file=2 \
+            docker.io/library/alpine:latest echo "log opts OK" || {
+              echo "podman rejected log options" >&2; exit 1; }

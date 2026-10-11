@@ -1,0 +1,52 @@
+name: New app request
+description: Ask the AI generator to add a new self-hosted app to the homelab.
+title: "app: "
+labels: ["app-request"]
+body:
+  - type: input
+    id: app_name
+    attributes:
+      label: App name
+      description: Short kebab-case slug (this becomes apps/<name>/ and the container name).
+      placeholder: wallabag
+    validations:
+      required: true
+
+  - type: textarea
+    id: app_description
+    attributes:
+      label: What should it do?
+      description: One or two sentences. The generator uses this to pick an image, ports and settings.
+      placeholder: Read-it-later service that saves articles for offline reading.
+    validations:
+      required: true
+
+  - type: input
+    id: image
+    attributes:
+      label: Preferred image (optional)
+      description: Pin a specific image if you know one. Must be linux/arm64 compatible. Leave blank to let the model choose.
+      placeholder: wallabag/wallabag:2.6
+    validations:
+      required: false
+
+  - type: input
+    id: host_port
+    attributes:
+      label: Host port (optional)
+      description: Must be >= 1024 and unused by other apps. Leave blank for auto-assignment.
+      placeholder: 8090
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints (defaults are fine)
+      options:
+        - label: linux/arm64 image only (required — checked automatically)
+          required: true
+        - label: host port must be >= 1024 (required — checked automatically)
+          required: true
+        - label: cpus 0.5 / mem 256m limits (max 2.0 / 1g)
+          required: false
